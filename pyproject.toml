@@ -74,6 +74,7 @@ all = [
     "pyvespa",
     "lancedb",
     "mysql-connector-python",
+    "dingodb",
 ]
 
 qdrant          = [ "qdrant-client" ]
@@ -98,6 +99,7 @@ clickhouse      = [ "clickhouse-connect" ]
 vespa           = [ "pyvespa" ]
 lancedb         = [ "lancedb" ]
 oceanbase       = [ "mysql-connector-python" ]
+dingodb         = [ "dingodb" ]
 
 [project.urls]
 "repository" = "https://github.com/zilliztech/VectorDBBench"
@@ -159,6 +161,9 @@ lint.fixable = [
 ]
 lint.unfixable = []
 
+# Allow unused variables when underscore-prefixed.
+lint.dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
 show-fixes = true
 
 # Exclude a variety of commonly ignored directories.
@@ -193,9 +198,6 @@ exclude = [
 # Same as Black.
 line-length = 120
 
-# Allow unused variables when underscore-prefixed.
-lint.dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
-
 # Assume Python 3.11
 target-version = "py311"
 
@@ -225,4 +227,3 @@ builtins-ignorelist = [
 "vectordb_bench/backend/clients/*" = ["PLC0415"]
 "vectordb_bench/cli/batch_cli.py" = ["PLC0415"]
 "vectordb_bench/backend/data_source.py" = ["PLC0415"]
-

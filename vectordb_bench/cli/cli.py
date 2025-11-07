@@ -188,6 +188,12 @@ def get_custom_case_config(parameters: dict) -> dict:
             "dataset_with_size_type": parameters["dataset_with_size_type"],
             "filter_rate": parameters["filter_rate"],
         }
+    elif parameters["case_type"] == "LabelFilterPerformanceCase":
+        # Reuse dataset_with_size_type; map filter_rate to label_percentage for label-filter cases
+        custom_case_config = {
+            "dataset_with_size_type": parameters["dataset_with_size_type"],
+            "label_percentage": parameters["filter_rate"],
+        }
     return custom_case_config
 
 

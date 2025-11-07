@@ -1,0 +1,21 @@
+dingodb:
+  - drop_old: true
+    load: true
+    search_serial: true
+    search_concurrent: false
+
+    # Label-filter case on OpenAI 50K (1536 dim)
+    case_type: LabelFilterPerformanceCase
+    dataset_with_size_type: "Small OpenAI (1536dim, 50K)"
+    # For label filter, filter_rate is used as label_percentage (e.g. 0.05 = 5%)
+    filter_rate: 0.05
+
+    db_label: dingodb-local-label-5p
+    addrs: "172.30.14.173:22001"
+    index_name: "test_index"
+
+    k: 100
+    concurrency_duration: 30
+    num_concurrency: "1"
+    concurrency_timeout: 120
+

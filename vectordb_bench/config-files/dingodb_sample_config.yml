@@ -1,0 +1,23 @@
+dingodb:
+  # Common controls
+  drop_old: false          # drop and recreate index before load
+  load: false              # perform load stage
+  search_serial: false     # run serial search stage
+  search_concurrent: true # run concurrent search stage
+
+  # Case selection (defaults to Performance1536D50K if omitted)
+  # Options include: Performance768D1M, Performance768D10M, Performance1536D500K, etc.
+  case_type: OpenAI-SMALL-50K
+
+  # DB label for reports
+  db_label: dingodb-local
+
+  # DingoDB connection and index info
+  addrs: "172.30.14.172:22001,172.30.14.173:22001,172.30.14.174:22001"
+  index_name: "test_index"
+
+  # Search parameters
+  k: 100
+  concurrency_duration: 30
+  num_concurrency: "1,4,8,16"
+  concurrency_timeout: 120

@@ -1,0 +1,16 @@
+dingodb:
+  - drop_old: true
+    load: true
+    search_serial: true
+    search_concurrent: true
+
+    case_type: Performance768D1M
+    db_label: dingodb-local
+
+    addrs: "172.30.14.172:22001,172.30.14.173:22001,172.30.14.174:22001"
+    index_name: "test_index"
+
+    k: 100
+    concurrency_duration: 30
+    num_concurrency: "1,4,8,16"
+    concurrency_timeout: 120
