@@ -1,8 +1,9 @@
 dingodb:
+  
   - drop_old: true
     load: true
     search_serial: true
-    search_concurrent: false
+    search_concurrent: true
 
     # Label-filter case on OpenAI 50K (1536 dim)
     case_type: LabelFilterPerformanceCase
@@ -14,8 +15,14 @@ dingodb:
     addrs: "172.30.14.173:22001"
     index_name: "test_index"
 
+    # Toggle document-accelerated scalar filtering (query_string path)
+    enable_scalar_speed_up_with_document: true
+    # Optional: customize partition operands for document speedup
+    # scalar_speedup_operand: [5, 10, 15, 20]
     k: 100
     concurrency_duration: 30
     num_concurrency: "1"
     concurrency_timeout: 120
 
+
+# vectordbbench batchcli --batch-config-file vectordb_bench/config-files/batch_dingodb_label_filter.yml

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import logging
 from collections.abc import Iterable
 from contextlib import contextmanager
@@ -17,6 +18,22 @@ from ..api import VectorDB
 from .config import DingoDBCaseConfig, DingoDBConfigDict
 
 log = logging.getLogger(__name__)
+
+
+def _has_parameter(func: Any, name: str) -> bool:
+    try:
+        return name in inspect.signature(func).parameters
+    except (AttributeError, ValueError, TypeError):
+        return False
+
+
+DEFAULT_SCALAR_SPEEDUP_OPERAND: tuple[int, int, int, int] = (5, 10, 15, 20)
+
+SUPPORTS_DOCUMENT_SCALAR_SPEEDUP = (
+    _has_parameter(SDKVectorDingoDB.create_index_with_schema, "enable_scalar_speed_up_with_document")
+    and _has_parameter(SDKVectorDingoDB.vector_search, "is_scalar_speed_up_with_document")
+    and _has_parameter(SDKVectorDingoDB.vector_search, "query_string")
+)
 
 
 class DingoDB(VectorDB):
@@ -45,11 +62,22 @@ class DingoDB(VectorDB):
         self.addrs = db_config["addrs"]
         self.case_config = db_case_config or DingoDBCaseConfig()
         self.with_scalar_labels = with_scalar_labels
+        self._doc_speedup_requested = bool(db_config.get("enable_scalar_speed_up_with_document", True))
+        self._doc_filter_capable = SUPPORTS_DOCUMENT_SCALAR_SPEEDUP
+        self._doc_speedup_active = self._doc_speedup_requested and self._doc_filter_capable
+        if self._doc_speedup_requested and not self._doc_filter_capable:
+            log.warning(
+                "Document-accelerated scalar filtering requested but the installed DingoDB SDK "
+                "does not expose the required APIs. Falling back to legacy filter mode."
+            )
+        raw_operand = db_config.get("scalar_speedup_operand")
+        self._scalar_speedup_operand = list(raw_operand) if raw_operand else None
 
         self._sdk_client: SDKClient | None = None
         self._vector_client: SDKVectorDingoDB | None = None
         self._search_params: dict[str, Any] | None = None
         self._pre_filter: bool = False
+        self._filter_query_string: str | None = None
         self._logged_search_schema: bool = False
         self._sample_logs_remaining: int = 5
 
@@ -81,12 +109,15 @@ class DingoDB(VectorDB):
                     self.index_name,
                     self.dim,
                     schema,
-                    index_type="hnsw",
-                    auto_id=False,
+                    **self._index_creation_kwargs(with_schema=True),
                 )
             except Exception as exc:  # noqa: BLE001
                 log.warning("create_index_with_schema failed, falling back to create_index: %s", exc)
-                vector_client.create_index(self.index_name, self.dim, index_type="hnsw", auto_id=False)
+                vector_client.create_index(
+                    self.index_name,
+                    self.dim,
+                    **self._index_creation_kwargs(with_schema=False),
+                )
         finally:
             self._close_connection(client)
 
@@ -100,15 +131,11 @@ class DingoDB(VectorDB):
                     self.index_name,
                     self.dim,
                     schema,
-                    index_type="hnsw",
-                    auto_id=False,
+                    **self._index_creation_kwargs(with_schema=True),
                 )
             except Exception as exc:  # noqa: BLE001
                 log.debug("Ensure index with schema failed (%s), trying basic create_index", exc)
-                try:
-                    vector_client.create_index(self.index_name, self.dim, index_type="hnsw", auto_id=False)
-                except Exception as exc2:  # noqa: BLE001
-                    log.debug("Ensure index skipped, create_index raised %s", exc2)
+                raise Exception("Ensure index with schema failed")
         finally:
             self._close_connection(client)
 
@@ -125,6 +152,21 @@ class DingoDB(VectorDB):
         if self.with_scalar_labels:
             schema.add_scalar_column(ScalarColumn("labels", ScalarType.STRING, True))
         return schema
+
+    def _index_creation_kwargs(self, *, with_schema: bool) -> dict[str, Any]:
+        """Build keyword arguments for index creation."""
+        kwargs: dict[str, Any] = {"index_type": "hnsw", "auto_id": False}
+        operand = self.db_config.get("operand")
+        if operand:
+            kwargs["operand"] = operand
+        if with_schema and self._doc_speedup_active:
+            kwargs["enable_scalar_speed_up_with_document"] = True
+            operand_values = self._scalar_speedup_operand or list(DEFAULT_SCALAR_SPEEDUP_OPERAND)
+            kwargs.setdefault("operand", operand_values)
+        return kwargs
+
+    def _escape_query_string_value(self, value: str) -> str:
+        return value.replace("\\", "\\\\").replace('"', '\\"')
 
     @staticmethod
     def _close_connection(client: SDKClient | None) -> None:
@@ -152,6 +194,8 @@ class DingoDB(VectorDB):
         finally:
             self._vector_client = None
             self._search_params = None
+            self._filter_query_string = None
+            self._pre_filter = False
             self._close_connection(client)
             self._sdk_client = None
 
@@ -195,15 +239,33 @@ class DingoDB(VectorDB):
             log.warning("Failed to insert data into DingoDB index %s: %s", self.index_name, exc)
             return 0, exc
 
-    def _escape_value(self, value: str) -> str:
-        return value.replace("'", "\\'")
+    def _build_numeric_query(self, field: str, value: int) -> str:
+        return f"{field}:>={value}"
+
+    def _build_string_query(self, field: str, value: str) -> str:
+        escaped = self._escape_query_string_value(value)
+        return f'{field}:"{escaped}"'
 
     def prepare_filter(self, filters: Filter) -> None:
         log.debug("Preparing filter: %s", filters)
+        self._filter_query_string = None
+        self._search_params = None
+        self._pre_filter = False
         if filters.type == FilterOp.NonFilter:
-            self._search_params = None
-            self._pre_filter = False
             return
+        if self._doc_speedup_active:
+            if filters.type == FilterOp.NumGE:
+                field = getattr(filters, "int_field", "id")
+                value = int(getattr(filters, "int_value", 0))
+                self._filter_query_string = self._build_numeric_query(field, value)
+                log.debug("Using document-accelerated numeric filter: %s", self._filter_query_string)
+                return
+            if filters.type == FilterOp.StrEqual:
+                field = getattr(filters, "label_field", "labels")
+                label = getattr(filters, "label_value", "")
+                self._filter_query_string = self._build_string_query(field, label)
+                log.debug("Using document-accelerated equality filter: %s", self._filter_query_string)
+                return
         if filters.type == FilterOp.NumGE:
             field = getattr(filters, "int_field", "id")
             expr = f"ge('{field}',{int(filters.int_value)})"
@@ -212,7 +274,6 @@ class DingoDB(VectorDB):
             log.debug("Using numeric filter (langchain_expr): %s", self._search_params)
             return
         if filters.type == FilterOp.StrEqual:
-            # Prefer structured meta_expr for equality filtering
             label = filters.label_value
             field = getattr(filters, "label_field", "labels")
             self._search_params = {"meta_expr": {field: label}}
@@ -362,7 +423,6 @@ class DingoDB(VectorDB):
 
         search_kwargs: dict[str, Any] = {}
         # Merge base search params from case config (e.g., efSearch) with filter params
-        base_params = {}
         try:
             base_params = self.case_config.search_param() or {}
         except Exception:  # noqa: BLE001
@@ -372,7 +432,10 @@ class DingoDB(VectorDB):
             merged_params.update(self._search_params)
         if merged_params:
             search_kwargs["search_params"] = merged_params
-        if self._pre_filter:
+        if self._doc_speedup_active and self._filter_query_string:
+            search_kwargs["is_scalar_speed_up_with_document"] = True
+            search_kwargs["query_string"] = self._filter_query_string
+        elif self._pre_filter:
             search_kwargs["pre_filter"] = True
 
         try:

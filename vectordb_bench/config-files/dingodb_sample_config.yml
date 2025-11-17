@@ -15,6 +15,10 @@ dingodb:
   # DingoDB connection and index info
   addrs: "172.30.14.172:22001,172.30.14.173:22001,172.30.14.174:22001"
   index_name: "test_index"
+  # Toggle document-accelerated scalar filtering (query_string path)
+  enable_scalar_speed_up_with_document: true
+  # Optional: customize partition operands for document speedup
+  # scalar_speedup_operand: [5, 10, 15, 20]
 
   # Search parameters
   k: 100

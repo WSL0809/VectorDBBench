@@ -58,7 +58,15 @@ def build_sub_cmd_args(batch_config: MutableMapping[str, Any] | None):
         "custom_dataset_with_gt": True,
     }
 
+    def format_dingodb_document_speedup(value: Any):
+        if value is None:
+            return []
+        # DingoDB client expects --enable-document-speedup/--disable-document-speedup
+        return ["--enable-document-speedup"] if bool(value) else ["--disable-document-speedup"]
+
     def format_option(key: str, value: Any):
+        if key == "enable_scalar_speed_up_with_document":
+            return format_dingodb_document_speedup(value)
         opt_name = key.replace("_", "-")
 
         if key in bool_options:

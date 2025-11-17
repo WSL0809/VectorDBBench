@@ -1,4 +1,4 @@
-from typing import TypedDict
+from typing import NotRequired, TypedDict
 
 from pydantic import BaseModel, SecretStr
 
@@ -8,17 +8,25 @@ from ..api import DBCaseConfig, DBConfig, MetricType
 class DingoDBConfigDict(TypedDict):
     addrs: str
     index_name: str
+    enable_scalar_speed_up_with_document: NotRequired[bool]
+    scalar_speedup_operand: NotRequired[list[int]]
 
 
 class DingoDBConfig(DBConfig):
     addrs: SecretStr
     index_name: str = "vectordb_bench_index"
+    enable_scalar_speed_up_with_document: bool = True
+    scalar_speedup_operand: list[int] | None = None
 
     def to_dict(self) -> DingoDBConfigDict:
-        return {
+        config: DingoDBConfigDict = {
             "addrs": self.addrs.get_secret_value() if isinstance(self.addrs, SecretStr) else self.addrs,
             "index_name": self.index_name,
         }
+        config["enable_scalar_speed_up_with_document"] = self.enable_scalar_speed_up_with_document
+        if self.scalar_speedup_operand is not None:
+            config["scalar_speedup_operand"] = self.scalar_speedup_operand
+        return config
 
 
 class DingoDBCaseConfig(BaseModel, DBCaseConfig):
