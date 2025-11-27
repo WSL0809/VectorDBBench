@@ -641,6 +641,12 @@ def run(
     log.info(f"Task:\n{pformat(task)}\n")
     if not parameters["dry_run"]:
         benchmark_runner.run([task], task_label)
+        # wait for async worker to start
         time.sleep(5)
+        # wait for the async process to finish
         if global_result_future:
             wait([global_result_future])
+        # drain completion signal and clear internal runner state so that
+        # subsequent tasks (e.g., batchcli sub-commands) can start normally
+        while benchmark_runner.has_running():
+            time.sleep(1)

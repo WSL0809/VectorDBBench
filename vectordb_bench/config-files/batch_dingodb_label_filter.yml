@@ -1,27 +1,46 @@
 dingodb:
-  
+  # 1) Label-filter case on OpenAI Medium (1536 dim, 500K)
+  #    注意：对于 LabelFilterPerformanceCase，这里的 filter_rate 实际是 label_percentage，
+  #    所以 0.05 表示标签占 5%，会使用 neighbors_labels_label_5p.parquet
+  # - drop_old: false
+  #   load: false
+  #   search_serial: true
+  #   search_concurrent: true
+
+  #   case_type: LabelFilterPerformanceCase
+  #   dataset_with_size_type: "Medium OpenAI (1536dim, 500K)"
+  #   filter_rate: 0.05
+
+  #   db_label: dingodb-local-label-5p
+  #   addrs: "172.30.14.173:22001"
+  #   index_name: "test_index_label_5p"
+
+  #   enable_scalar_speed_up_with_document: true
+  #   k: 100
+  #   concurrency_duration: 30
+  #   num_concurrency: "32"
+  #   concurrency_timeout: 120
+
+  # 2) Int-filter case on OpenAI Medium (1536 dim, 500K)
+  #    对应 NewIntFilterPerformanceCase，这里的 filter_rate 就是 int_rate，
+  #    0.95 表示保留 95% 的 id 区间，使用 neighbors_int_95p.parquet
   - drop_old: true
     load: true
     search_serial: true
     search_concurrent: true
 
-    # Label-filter case on OpenAI 50K (1536 dim)
-    case_type: LabelFilterPerformanceCase
-    dataset_with_size_type: "Small OpenAI (1536dim, 50K)"
-    # For label filter, filter_rate is used as label_percentage (e.g. 0.05 = 5%)
-    filter_rate: 0.05
+    case_type: NewIntFilterPerformanceCase
+    dataset_with_size_type: "Medium OpenAI (1536dim, 500K)"
+    filter_rate: 0.99
 
-    db_label: dingodb-local-label-5p
+    db_label: dingodb-local-int-99p
     addrs: "172.30.14.173:22001"
-    index_name: "test_index"
+    index_name: "test_index_label_5p"
 
-    # Toggle document-accelerated scalar filtering (query_string path)
-    enable_scalar_speed_up_with_document: true
-    # Optional: customize partition operands for document speedup
-    # scalar_speedup_operand: [5, 10, 15, 20]
+    enable_scalar_speed_up_with_document: false
     k: 100
     concurrency_duration: 30
-    num_concurrency: "1"
+    num_concurrency: "64"
     concurrency_timeout: 120
 
 

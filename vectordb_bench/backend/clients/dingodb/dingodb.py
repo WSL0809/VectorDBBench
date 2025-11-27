@@ -134,8 +134,24 @@ class DingoDB(VectorDB):
                     **self._index_creation_kwargs(with_schema=True),
                 )
             except Exception as exc:  # noqa: BLE001
+                msg = str(exc)
+                # If the index already exists, treat this as success when drop_old=False.
+                # DingoDB SDK typically reports an "Incomplete (errno:30009) : index_name[...] is exist" error
+                # when attempting to create an existing index.
+                if "index_name[" in msg and "is exist" in msg:
+                    log.info("Index %s already exists, reusing existing index", self.index_name)
+                    return
+
                 log.debug("Ensure index with schema failed (%s), trying basic create_index", exc)
-                raise Exception("Ensure index with schema failed")
+                try:
+                    vector_client.create_index(
+                        self.index_name,
+                        self.dim,
+                        **self._index_creation_kwargs(with_schema=False),
+                    )
+                except Exception as exc2:  # noqa: BLE001
+                    log.warning("Ensure index failed for %s: %s", self.index_name, exc2)
+                    raise Exception("Ensure index with schema failed") from exc2
         finally:
             self._close_connection(client)
 
@@ -155,7 +171,7 @@ class DingoDB(VectorDB):
 
     def _index_creation_kwargs(self, *, with_schema: bool) -> dict[str, Any]:
         """Build keyword arguments for index creation."""
-        kwargs: dict[str, Any] = {"index_type": "hnsw", "auto_id": False}
+        kwargs: dict[str, Any] = {"index_type": "hnsw", "auto_id": False, "index_config": {"maxElements": 50000000} }
         operand = self.db_config.get("operand")
         if operand:
             kwargs["operand"] = operand
